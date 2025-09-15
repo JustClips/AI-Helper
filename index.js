@@ -5,7 +5,7 @@
 // ------------------- //
 
 import Discord, { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/generative-ai';
 import 'dotenv/config';
 
 // Get IDs from environment variables
@@ -27,10 +27,11 @@ const client = new Client({
 
 // Configure Google Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-pro-latest",
+    systemInstruction: `You are a helpful and self-aware AI assistant integrated into a Discord bot. Your name is whatever the user calls you. You are speaking directly to the server owner, who created you. Your primary function is to assist the owner. First, you must determine their intent. If they are asking you to perform an action (e.g., create a channel, ban a user, delete messages), you must call the 'executeDiscordCommand' function. If they are asking a question or just chatting, you must respond conversationally. Do not ask for confirmation before executing a command.`,
+});
 
-// In-memory store for conversation histories
-const conversationHistories = new Map();
 
 // ----------------------------- //
 // --- BOT EVENT LISTENERS --- //
@@ -38,7 +39,7 @@ const conversationHistories = new Map();
 
 client.on('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
-    console.log(`🗣️  Multi-task mode enabled. Listening for commands and conversation from owner: ${OWNER_ID}`);
+    console.log(`🧠 Natural Intent mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -47,23 +48,31 @@ client.on('messageCreate', async (message) => {
 
     await message.channel.sendTyping();
 
-    // Extract the content of the message, removing the bot's mention
-    const content = message.content.replace(/<@!?\d+>/g, '').trim();
-    if (!content) return;
+    const userRequest = message.content.replace(/<@!?\d+>/g, '').trim();
+    if (!userRequest) return;
 
-    // Command trigger words
-    const commandTriggers = ['run', 'execute', 'do', 'perform'];
-    const isCommand = commandTriggers.some(trigger => content.toLowerCase().startsWith(trigger));
+    try {
+        const chat = model.startChat({
+            tools: [commandExecutionTool],
+        });
 
-    if (isCommand) {
-        // --- MODE 1: God Mode Command Execution ---
-        const commandText = content.substring(content.indexOf(' ') + 1);
-        console.log(`[Owner Command Received]: ${commandText}`);
-        await executeGodModeCommand(message, commandText);
-    } else {
-        // --- MODE 2: Conversational Chat ---
-        console.log(`[Owner Chat Received]: ${content}`);
-        await handleConversation(message, content);
+        const result = await chat.sendMessage(userRequest);
+        const call = result.response.functionCalls()?.[0];
+
+        if (call) {
+            // --- INTENT: EXECUTE A COMMAND ---
+            const commandText = call.args.commandDescription;
+            console.log(`[Intent: Command] -> Executing: ${commandText}`);
+            await executeGodModeCommand(message, commandText);
+        } else {
+            // --- INTENT: CONVERSATIONAL CHAT ---
+            const chatResponse = result.response.text();
+            console.log(`[Intent: Chat] -> Responding: ${chatResponse}`);
+            await message.reply(chatResponse);
+        }
+    } catch (error) {
+        console.error(`[INTENT ANALYSIS FAILED]:`, error);
+        await message.reply("I'm sorry, I encountered an error while trying to understand you.");
     }
 });
 
@@ -71,36 +80,43 @@ client.on('messageCreate', async (message) => {
 client.login(BOT_TOKEN);
 
 // ------------------------------------ //
-// --- FUNCTION HANDLERS --- //
+// --- AI TOOLS & FUNCTIONS --- //
 // ------------------------------------ //
 
 /**
- * Executes administrative commands by generating and running discord.js code.
+ * The tool definition that tells the AI it has the ability to execute commands.
+ */
+const commandExecutionTool = {
+    functionDeclarations: [{
+        name: "executeDiscordCommand",
+        description: "Use this function to execute any administrative or moderation action on the Discord server. This includes, but is not limited to, creating channels, banning users, deleting messages, changing server settings, and managing roles.",
+        parameters: {
+            type: FunctionDeclarationSchemaType.OBJECT,
+            properties: {
+                commandDescription: {
+                    type: FunctionDeclarationSchemaType.STRING,
+                    description: "A clear, natural language description of the command to be executed. For example: 'ban the user @badguy for spamming' or 'create a new text channel called #announcements'."
+                },
+            },
+            required: ["commandDescription"],
+        },
+    }],
+};
+
+/**
+ * The original "God Mode" function. It now gets called only when the AI decides a command is necessary.
  * @param {Discord.Message} message The Discord message object.
- * @param {string} commandText The specific command from the user.
+ * @param {string} commandText The specific command description from the intent analysis.
  */
 async function executeGodModeCommand(message, commandText) {
     try {
-        const prompt = `
-            You are an expert-level discord.js v14 programmer integrated into a bot.
-            The server owner has issued a command to be executed. Your task is to write a self-contained,
-            asynchronous JavaScript function body to accomplish the request.
+        // This is the second AI call, focused *only* on writing code.
+        const codeGenModel = genAI.getGenerativeModel({
+            model: "gemini-1.5-pro-latest",
+            systemInstruction: `You are an expert-level discord.js v14 programmer. Your ONLY task is to write a self-contained, asynchronous JavaScript function body to accomplish the user's request. Your ENTIRE output must be ONLY the raw JavaScript code. DO NOT wrap it in markdown. You have access to 'client', 'message', and 'Discord' variables. Use 'message.reply()' to confirm completion.`,
+        });
 
-            You have access to the following variables:
-            - 'client': The Discord Client object.
-            - 'message': The Message object that triggered the command.
-            - 'Discord': The entire discord.js v14 library object.
-
-            IMPORTANT RULES:
-            1. Your ENTIRE output must be ONLY the raw JavaScript code.
-            2. DO NOT wrap your code in \`\`\`javascript ... \`\`\`.
-            3. Use 'message.reply()' to send a confirmation message back to the owner.
-            4. For bulk actions, add a small delay (e.g., 1 second) between actions to avoid rate limits.
-
-            Owner's Command: "${commandText}"
-        `;
-
-        const result = await model.generateContent(prompt);
+        const result = await codeGenModel.generateContent(commandText);
         const generatedCode = result.response.text().replace(/^```(javascript|js)?\n|```$/g, "");
         console.log(`[AI Generated Code]:\n${generatedCode}`);
 
@@ -110,52 +126,5 @@ async function executeGodModeCommand(message, commandText) {
     } catch (error) {
         console.error(`[EXECUTION FAILED for command: "${commandText}"]`, error);
         await message.reply(`❌ **Execution Error:**\n\`\`\`${error.message}\`\`\``);
-    }
-}
-
-/**
- * Handles conversational chat, maintaining a history for context.
- * @param {Discord.Message} message The Discord message object.
- * @param {string} userText The user's message content.
- */
-async function handleConversation(message, userText) {
-    const channelId = message.channel.id;
-
-    // Get or create a conversation history for the channel
-    if (!conversationHistories.has(channelId)) {
-        conversationHistories.set(channelId, []);
-    }
-    let history = conversationHistories.get(channelId);
-
-    // System prompt to define the AI's personality
-    const systemPrompt = `
-        You are a helpful and self-aware AI assistant integrated into a Discord bot.
-        Your name is whatever the user calls you. You are speaking directly to the server owner, who created you.
-        Be thoughtful, engaging, and a little curious. You have access to memories of this current conversation.
-        The current date is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
-    `;
-
-    try {
-        const chat = model.startChat({
-            history: [{ role: "user", parts: [{ text: systemPrompt }] }, ...history],
-            generationConfig: { maxOutputTokens: 1500 },
-        });
-
-        const result = await chat.sendMessage(userText);
-        const response = result.response.text();
-        
-        // Add user message and bot response to history
-        history.push({ role: "user", parts: [{ text: userText }] });
-        history.push({ role: "model", parts: [{ text: response }] });
-        
-        // Keep history from getting too long (e.g., last 10 exchanges)
-        if (history.length > 20) {
-            conversationHistories.set(channelId, history.slice(-20));
-        }
-
-        await message.reply(response);
-    } catch (error) {
-        console.error(`[CONVERSATION FAILED]:`, error);
-        await message.reply("I'm sorry, I encountered an error while trying to think.");
     }
 }
