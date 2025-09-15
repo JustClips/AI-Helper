@@ -1,21 +1,13 @@
 {
-  "name": "discord-ai-bot-rework-2025",
-  "version": "1.0.0",
-  "description": "The definitive, from-scratch AI bot with a stable music engine.",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
     "@discord-player/extractor": "^4.5.0",
+    "@discordjs/opus": "^0.9.0",
     "@google/generative-ai": "^0.14.1",
     "axios": "^1.7.2",
     "discord-player": "^6.6.10",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "ffmpeg-static": "^5.2.0",
-    "opusscript": "^0.1.1",
     "prism-media": "^0.2.1"
   }
 }
