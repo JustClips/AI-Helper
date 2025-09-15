@@ -65,7 +65,11 @@ client.on('messageCreate', async (message) => {
     const userRequest = message.content.replace(/<@!?\d+>/g, '').trim();
 
     if (message.attachments.size > 0) {
-        // ... (Image handling logic)
+        const imageAttachment = message.attachments.first();
+        if (imageAttachment.contentType?.startsWith('image/')) {
+            await handleImageQuery(message, userRequest, imageAttachment);
+            return;
+        }
     }
     if (!userRequest) return;
 
@@ -125,7 +129,20 @@ const commandExecutionTool = {
     ],
 };
 
-// --- PRE-PROGRAMMED FUNCTIONS ---
+async function handleImageQuery(message, textPrompt, imageAttachment) {
+    try {
+        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(response.data, 'binary');
+        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
+        const prompt = textPrompt || "What is in this image?";
+        const result = await model.generateContent([prompt, imagePart]);
+        const aiResponse = result.response.text();
+        await message.reply(aiResponse);
+    } catch (error) {
+        console.error('Error handling image query:', error);
+        await message.reply("Sorry, I had trouble analyzing that image.");
+    }
+}
 
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
@@ -187,25 +204,6 @@ async function togglePauseResume(message) {
     await message.reply(isPaused ? "▶️ Resumed the music." : "⏸️ Paused the music.");
 }
 
-
-async function handleImageQuery(message, textPrompt, imageAttachment) { /* ... (Unchanged) ... */ }
-async function executeGodModeCommand(message, commandText) { /* ... (Unchanged) ... */ }
-
-// Unchanged functions for completeness
-async function handleImageQuery(message, textPrompt, imageAttachment) {
-    try {
-        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(response.data, 'binary');
-        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
-        const prompt = textPrompt || "What is in this image?";
-        const result = await model.generateContent([prompt, imagePart]);
-        const aiResponse = result.response.text();
-        await message.reply(aiResponse);
-    } catch (error) {
-        console.error('Error handling image query:', error);
-        await message.reply("Sorry, I had trouble analyzing that image.");
-    }
-}
 async function executeGodModeCommand(message, commandText) {
     try {
         const codeGenModel = genAI.getGenerativeModel({
