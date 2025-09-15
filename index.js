@@ -33,8 +33,9 @@ const client = new Client({
 
 // Initialize the music player and attach it to the client
 const player = new Player(client);
-// Load the YouTube extractor to search for songs
-await player.extractors.load(YouTubeExtractor.identifier);
+
+// ✅ FIXED: Use the correct method to register the YouTube extractor
+await player.extractors.register(YouTubeExtractor, {});
 
 
 // Configure Google Gemini AI
@@ -140,15 +141,23 @@ async function playMusic(message, query) {
     }
 
     try {
-        await player.play(voiceChannel, query, {
+        // Let the player search for the song and play it.
+        const searchResult = await player.search(query, { requestedBy: message.author });
+        if (!searchResult.hasTracks()) {
+            return message.reply(`I couldn't find anything for "${query}"!`);
+        }
+        
+        await player.play(voiceChannel, searchResult, {
             nodeOptions: {
                 metadata: message, // Associates the track with the message
                 leaveOnEnd: true,
                 leaveOnStop: true,
                 leaveOnEmpty: true,
+                leaveOnEmptyCooldown: 300000, // 5 minutes
             }
         });
-        await message.reply(`Searching for your song...`);
+
+        await message.reply(`Loading your song...`);
     } catch (e) {
         console.error(e);
         await message.reply('Something went wrong, I couldn\'t play the song.');
