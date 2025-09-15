@@ -1,15 +1,19 @@
 {
-  "name": "discord-ai-admin-bot",
+  "name": "discord-ai-god-bot",
   "version": "1.0.0",
-  "description": "An AI-powered admin bot for Discord.",
+  "description": "An AI bot with full server control and music playback.",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "@discordjs/voice": "^0.17.0",
     "@google/generative-ai": "^0.14.1",
     "discord.js": "^14.15.3",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.13",
+    "ytdl-core": "^4.11.5"
   }
 }
