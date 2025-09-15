@@ -9,7 +9,7 @@ import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/gener
 import 'dotenv/config';
 import axios from 'axios';
 
-// ✅ STABLE BUILD: Import the professional music player engine
+// STABLE BUILD: Import the professional music player engine
 import { Player } from 'discord-player';
 
 // Get IDs from environment variables
@@ -29,10 +29,8 @@ const client = new Client({
     partials: Object.keys(Partials).map((partial) => Partials[partial]),
 });
 
-// ✅ STABLE BUILD: Initialize the music player and attach it to the client
-const player = new Player(client, {
-    // Optional: ytdlOptions can be configured here if needed
-});
+// STABLE BUILD: Initialize the music player and attach it to the client
+const player = new Player(client);
 // The library will now automatically load the YouTube extractor if the packages are installed.
 
 
@@ -53,7 +51,7 @@ client.on('clientReady', () => {
     console.log(`🎶 STABLE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
-// ✅ STABLE BUILD: Add detailed logging for the music player to easily debug future issues.
+// STABLE BUILD: Add detailed logging for the music player to easily debug future issues.
 player.events.on('playerStart', (queue, track) => {
     queue.metadata.channel.send(`▶️ Now playing: **${track.title}**`);
 });
@@ -76,7 +74,12 @@ client.on('messageCreate', async (message) => {
     const userRequest = message.content.replace(/<@!?\d+>/g, '').trim();
 
     if (message.attachments.size > 0) {
-        // ... (Image handling logic is unchanged)
+        const imageAttachment = message.attachments.first();
+        if (imageAttachment.contentType?.startsWith('image/')) {
+            console.log(`[Intent: Image Analysis] -> Analyzing image: ${imageAttachment.url}`);
+            await handleImageQuery(message, userRequest, imageAttachment);
+            return;
+        }
     }
     if (!userRequest) return;
 
@@ -109,11 +112,28 @@ client.login(BOT_TOKEN);
 // --- AI TOOLS & FUNCTIONS --- //
 // ------------------------------------ //
 
-const commandExecutionTool = { /* ... (This section is unchanged) ... */ };
-async function handleImageQuery(message, textPrompt, imageAttachment) { /* ... (This section is unchanged) ... */ }
-async function executeGodModeCommand(message, commandText) { /* ... (This section is unchanged) ... */ }
+const commandExecutionTool = {
+    functionDeclarations: [
+        { name: "executeDiscordCommand", description: "For any administrative/moderation action.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { commandDescription: { type: FunctionDeclarationSchemaType.STRING } }, required: ["commandDescription"] } },
+        { name: "playMusic", description: "Plays a song in the user's voice channel. Can accept a YouTube URL or a search query like 'lofi hip hop'.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { query: { type: FunctionDeclarationSchemaType.STRING, description: "The YouTube URL or search query for the song." } }, required: ["query"] }, }
+    ],
+};
 
-// The music play function is now much more robust
+async function handleImageQuery(message, textPrompt, imageAttachment) {
+    try {
+        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(response.data, 'binary');
+        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
+        const prompt = textPrompt || "What is in this image?";
+        const result = await model.generateContent([prompt, imagePart]);
+        const aiResponse = result.response.text();
+        await message.reply(aiResponse);
+    } catch (error) {
+        console.error('Error handling image query:', error);
+        await message.reply("Sorry, I had trouble analyzing that image.");
+    }
+}
+
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) {
@@ -143,27 +163,6 @@ async function playMusic(message, query) {
     }
 }
 
-// Unchanged functions for completeness
-const commandExecutionTool = {
-    functionDeclarations: [
-        { name: "executeDiscordCommand", description: "For any administrative/moderation action.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { commandDescription: { type: FunctionDeclarationSchemaType.STRING } }, required: ["commandDescription"] } },
-        { name: "playMusic", description: "Plays a song in the user's voice channel. Can accept a YouTube URL or a search query like 'lofi hip hop'.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { query: { type: FunctionDeclarationSchemaType.STRING, description: "The YouTube URL or search query for the song." } }, required: ["query"] }, }
-    ],
-};
-async function handleImageQuery(message, textPrompt, imageAttachment) {
-    try {
-        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(response.data, 'binary');
-        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
-        const prompt = textPrompt || "What is in this image?";
-        const result = await model.generateContent([prompt, imagePart]);
-        const aiResponse = result.response.text();
-        await message.reply(aiResponse);
-    } catch (error) {
-        console.error('Error handling image query:', error);
-        await message.reply("Sorry, I had trouble analyzing that image.");
-    }
-}
 async function executeGodModeCommand(message, commandText) {
     try {
         const codeGenModel = genAI.getGenerativeModel({
@@ -175,5 +174,8 @@ async function executeGodModeCommand(message, commandText) {
         console.log(`[AI Generated Code]:\n${generatedCode}`);
         const dynamicFunction = new Function('client', 'message', 'Discord', `return (async () => { ${generatedCode} })()`);
         await dynamicFunction(client, message, Discord);
-    } catch (error) { console.error(`[EXECUTION FAILED for command: "${commandText}"]`, error); await message.reply(`❌ **Execution Error:**\n\`\`\`${error.message}\`\`\``); }
+    } catch (error) { 
+        console.error(`[EXECUTION FAILED for command: "${commandText}"]`, error); 
+        await message.reply(`❌ **Execution Error:**\n\`\`\`${error.message}\`\`\``); 
+    }
 }
