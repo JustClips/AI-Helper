@@ -30,9 +30,7 @@ const client = new Client({
 // Initialize the music player
 const player = new Player(client);
 
-// ✅ --- THE DEFINITIVE FIX --- ✅
-// This command loads all the default extractors, including YouTube, Spotify, etc.
-// This is the most important line for fixing the music player.
+// This command loads all the default extractors (YouTube, Spotify, etc.)
 await player.extractors.loadDefault();
 
 
@@ -50,7 +48,7 @@ const model = genAI.getGenerativeModel({
 
 client.on('clientReady', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
-    console.log(`🎶 DEFINITIVE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
+    console.log(`🎶 Reworked Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
 player.events.on('playerStart', (queue, track) => {
@@ -58,7 +56,6 @@ player.events.on('playerStart', (queue, track) => {
 });
 player.events.on('error', (queue, error) => {
     console.error(`[Player Error]: ${error.message}`);
-    console.error(error);
     queue.metadata.channel.send('A player error occurred! Please check the logs.');
 });
 
