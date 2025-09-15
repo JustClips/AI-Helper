@@ -1,7 +1,7 @@
 {
-  "name": "discord-ai-ultimate-bot",
+  "name": "discord-ai-music-bot-final",
   "version": "1.0.0",
-  "description": "An AI bot with a fully functional, stable music engine.",
+  "description": "The definitive, stable AI bot with a professional music engine.",
   "main": "index.js",
   "type": "module",
   "scripts": {
