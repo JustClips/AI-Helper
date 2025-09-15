@@ -2,7 +2,7 @@
 // --- ⚙️ SETUP & INITIALIZATION ⚙️ --- //
 // -------------------------------------------------------------------------------- //
 
-import Discord, { Client, GatewayIntentBits, Partials, EmbedBuilder, Collection } from 'discord.js';
+import Discord, { Client, GatewayIntentBits, Partials, EmbedBuilder } from 'discord.js';
 import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/generative-ai';
 import 'dotenv/config';
 import axios from 'axios';
@@ -23,7 +23,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages, // Required for partials
+        GatewayIntentBits.DirectMessages,
     ],
     partials: [Partials.Channel], // Necessary for DMs
 });
@@ -35,7 +35,7 @@ await player.extractors.loadDefault();
 
 // --- Google Gemini AI Configuration --- //
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({
+const conversationalModel = genAI.getGenerativeModel({
     model: "gemini-1.5-pro-latest",
     systemInstruction: `You are a helpful and self-aware AI assistant named Gemini. You have a full suite of music controls ('playMusic', 'skipTrack', 'stopPlayback', 'showQueue', 'togglePauseResume') and a powerful server admin tool ('executeDiscordCommand'). Use the correct tool to fulfill the user's request. If they are just chatting, respond conversationally. Be concise unless asked for detail.`,
 });
@@ -100,11 +100,11 @@ client.on('messageCreate', async (message) => {
         // --- Manage conversation history --- //
         if (!chatHistories.has(authorId)) {
             chatHistories.set(authorId, {
-                chat: model.startChat({ tools: [commandExecutionTool], history: [] }),
+                chat: conversationalModel.startChat({ tools: [commandExecutionTool], history: [] }),
                 timeout: setTimeout(() => chatHistories.delete(authorId), 600000) // 10 minute timeout
             });
         }
-        // Refresh timeout
+        // Refresh timeout on new message
         clearTimeout(chatHistories.get(authorId).timeout);
         chatHistories.get(authorId).timeout = setTimeout(() => chatHistories.delete(authorId), 600000);
 
@@ -239,7 +239,7 @@ async function handleImageQuery(message, textPrompt, imageAttachment) {
         const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType } };
 
         const prompt = textPrompt || "Describe this image in detail.";
-        const result = await model.generateContent([prompt, imagePart]);
+        const result = await conversationalModel.generateContent([prompt, imagePart]);
         await message.reply(result.response.text());
     } catch (error) {
         console.error('Error handling image query:', error);
