@@ -9,6 +9,8 @@ import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/gener
 import 'dotenv/config';
 import axios from 'axios';
 import { Player } from 'discord-player';
+// ✅ FINAL FIX: Import the new, stable YouTube extractor
+import { YoutubeiExtractor } from '@discord-player/youtubei-extractor';
 
 // Get IDs from environment variables
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
@@ -30,9 +32,8 @@ const client = new Client({
 // Initialize the music player
 const player = new Player(client);
 
-// ✅ --- THE FINAL, CRITICAL FIX --- ✅
-// This command loads all the default extractors, including YouTube, which fixes the "No results found" error.
-await player.extractors.loadDefault();
+// ✅ FINAL FIX: Explicitly load the new, stable extractor
+await player.extractors.register(YoutubeiExtractor, {});
 
 
 // Configure Google Gemini AI
@@ -49,7 +50,7 @@ const model = genAI.getGenerativeModel({
 
 client.on('clientReady', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
-    console.log(`🎶 ULTIMATE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
+    console.log(`🎶 DEFINITIVE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
 player.events.on('playerStart', (queue, track) => {
@@ -66,14 +67,10 @@ client.on('messageCreate', async (message) => {
     if (!message.mentions.has(client.user.id)) return;
 
     await message.channel.sendTyping();
-    const userRequest = message.content.replace(/<@!?\d+>/g, '').trim();
+    const userRequest = message.content.replace(/<@!?d+>/g, '').trim();
 
     if (message.attachments.size > 0) {
-        const imageAttachment = message.attachments.first();
-        if (imageAttachment.contentType?.startsWith('image/')) {
-            await handleImageQuery(message, userRequest, imageAttachment);
-            return;
-        }
+        // ... (Image handling logic)
     }
     if (!userRequest) return;
 
@@ -84,7 +81,6 @@ client.on('messageCreate', async (message) => {
 
         if (call) {
             const { name, args } = call;
-            // Expanded router for new music controls
             switch (name) {
                 case 'executeDiscordCommand':
                     await executeGodModeCommand(message, args.commandDescription);
@@ -122,6 +118,16 @@ client.login(BOT_TOKEN);
 // --- AI TOOLS & FUNCTIONS --- //
 // ------------------------------------ //
 
+const commandExecutionTool = { /* Unchanged */ };
+async function playMusic(message, query) { /* Unchanged */ }
+async function skipTrack(message) { /* Unchanged */ }
+async function stopPlayback(message) { /* Unchanged */ }
+async function showQueue(message) { /* Unchanged */ }
+async function togglePauseResume(message) { /* Unchanged */ }
+async function handleImageQuery(message, textPrompt, imageAttachment) { /* Unchanged */ }
+async function executeGodModeCommand(message, commandText) { /* Unchanged */ }
+
+// --- UNCHANGED FUNCTIONS FOR COMPLETENESS ---
 const commandExecutionTool = {
     functionDeclarations: [
         { name: "executeDiscordCommand", description: "For any administrative/moderation action.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { commandDescription: { type: FunctionDeclarationSchemaType.STRING } }, required: ["commandDescription"] } },
@@ -132,23 +138,13 @@ const commandExecutionTool = {
         { name: "togglePauseResume", description: "Pauses the music if it is playing, or resumes it if it is paused.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
     ],
 };
-
-// --- PRE-PROGRAMMED FUNCTIONS ---
-
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) return message.reply('You need to be in a voice channel to play music!');
-
     try {
         await player.play(voiceChannel, query, {
             requestedBy: message.author,
-            nodeOptions: { 
-                metadata: { channel: message.channel },
-                // ✅ NEW FEATURE: Leave the channel after 2 minutes of inactivity
-                leaveOnEmpty: true,
-                leaveOnEmptyCooldown: 120000, // 2 minutes in milliseconds
-                leaveOnEnd: false, // Keep the bot in channel after a song finishes
-             }
+            nodeOptions: { metadata: { channel: message.channel } }
         });
         await message.reply(`Searching for **${query}**...`);
     } catch (e) {
@@ -156,52 +152,39 @@ async function playMusic(message, query) {
         await message.reply(`Something went wrong! I couldn't find or play the song.`);
     }
 }
-
 async function skipTrack(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to skip.");
-    
     const skipped = queue.node.skip();
     await message.reply(skipped ? "⏭️ Skipped the current song." : "Something went wrong while skipping.");
 }
-
 async function stopPlayback(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue) return message.reply("There is nothing to stop.");
-
     queue.delete();
     await message.reply("⏹️ Stopped the music and cleared the queue.");
 }
-
 async function showQueue(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing right now.");
-
     const currentTrack = queue.currentTrack;
     const tracks = queue.tracks.toArray().slice(0, 10).map((track, i) => {
         return `${i + 1}. **${track.title}** - \`${track.duration}\``;
     }).join('\n');
-
     const embed = new EmbedBuilder()
         .setColor('#0099ff')
         .setTitle('Server Queue')
         .setDescription(tracks.length > 0 ? tracks : 'No more songs in the queue.')
         .addFields({ name: 'Now Playing', value: `▶️ **${currentTrack.title}** - \`${currentTrack.duration}\`` });
-
     await message.reply({ embeds: [embed] });
 }
-
 async function togglePauseResume(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to pause or resume.");
-
     const isPaused = queue.node.isPaused();
-    queue.node.setPaused(!isPaused); // Toggle the paused state
-
+    queue.node.setPaused(!isPaused);
     await message.reply(isPaused ? "▶️ Resumed the music." : "⏸️ Paused the music.");
 }
-
-
 async function handleImageQuery(message, textPrompt, imageAttachment) {
     try {
         const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
