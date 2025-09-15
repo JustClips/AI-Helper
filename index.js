@@ -29,13 +29,17 @@ const client = new Client({
 
 // Initialize the music player
 const player = new Player(client);
-// player.extractors.loadDefault(); // This is often done automatically now
+
+// ✅ --- THE FINAL, CRITICAL FIX --- ✅
+// This command loads all the default extractors, including YouTube, which fixes the "No results found" error.
+await player.extractors.loadDefault();
+
 
 // Configure Google Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({
     model: "gemini-1.5-pro-latest",
-    systemInstruction: `You are a helpful and self-aware AI assistant integrated into a Discord bot. You have tools for server administration ('executeDiscordCommand') and a full suite of music controls ('playMusic', 'skipTrack', 'stopPlayback', 'showQueue', 'togglePauseResume'). Use the appropriate tool for the user's request. If they are just chatting, respond conversationally.`,
+    systemInstruction: `You are a helpful and self-aware AI assistant with a full suite of music controls ('playMusic', 'skipTrack', 'stopPlayback', 'showQueue', 'togglePauseResume') and server admin tools ('executeDiscordCommand'). Use the correct tool for the user's request. If they are just chatting, respond conversationally.`,
 });
 
 
@@ -45,7 +49,7 @@ const model = genAI.getGenerativeModel({
 
 client.on('clientReady', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
-    console.log(`🎶 Full Music Controls & God Mode enabled. Listening for owner: ${OWNER_ID}`);
+    console.log(`🎶 ULTIMATE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
 player.events.on('playerStart', (queue, track) => {
@@ -129,20 +133,7 @@ const commandExecutionTool = {
     ],
 };
 
-async function handleImageQuery(message, textPrompt, imageAttachment) {
-    try {
-        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(response.data, 'binary');
-        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
-        const prompt = textPrompt || "What is in this image?";
-        const result = await model.generateContent([prompt, imagePart]);
-        const aiResponse = result.response.text();
-        await message.reply(aiResponse);
-    } catch (error) {
-        console.error('Error handling image query:', error);
-        await message.reply("Sorry, I had trouble analyzing that image.");
-    }
-}
+// --- PRE-PROGRAMMED FUNCTIONS ---
 
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
@@ -151,7 +142,13 @@ async function playMusic(message, query) {
     try {
         await player.play(voiceChannel, query, {
             requestedBy: message.author,
-            nodeOptions: { metadata: { channel: message.channel } }
+            nodeOptions: { 
+                metadata: { channel: message.channel },
+                // ✅ NEW FEATURE: Leave the channel after 2 minutes of inactivity
+                leaveOnEmpty: true,
+                leaveOnEmptyCooldown: 120000, // 2 minutes in milliseconds
+                leaveOnEnd: false, // Keep the bot in channel after a song finishes
+             }
         });
         await message.reply(`Searching for **${query}**...`);
     } catch (e) {
@@ -204,6 +201,21 @@ async function togglePauseResume(message) {
     await message.reply(isPaused ? "▶️ Resumed the music." : "⏸️ Paused the music.");
 }
 
+
+async function handleImageQuery(message, textPrompt, imageAttachment) {
+    try {
+        const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(response.data, 'binary');
+        const imagePart = { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageAttachment.contentType, }, };
+        const prompt = textPrompt || "What is in this image?";
+        const result = await model.generateContent([prompt, imagePart]);
+        const aiResponse = result.response.text();
+        await message.reply(aiResponse);
+    } catch (error) {
+        console.error('Error handling image query:', error);
+        await message.reply("Sorry, I had trouble analyzing that image.");
+    }
+}
 async function executeGodModeCommand(message, commandText) {
     try {
         const codeGenModel = genAI.getGenerativeModel({
