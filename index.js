@@ -9,7 +9,6 @@ import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/gener
 import 'dotenv/config';
 import axios from 'axios';
 import { Player } from 'discord-player';
-// ✅ FINAL FIX: Import the new, stable YouTube extractor
 import { YoutubeiExtractor } from '@discord-player/youtubei-extractor';
 
 // Get IDs from environment variables
@@ -32,7 +31,7 @@ const client = new Client({
 // Initialize the music player
 const player = new Player(client);
 
-// ✅ FINAL FIX: Explicitly load the new, stable extractor
+// Explicitly load the new, stable extractor
 await player.extractors.register(YoutubeiExtractor, {});
 
 
@@ -70,7 +69,11 @@ client.on('messageCreate', async (message) => {
     const userRequest = message.content.replace(/<@!?d+>/g, '').trim();
 
     if (message.attachments.size > 0) {
-        // ... (Image handling logic)
+        const imageAttachment = message.attachments.first();
+        if (imageAttachment.contentType?.startsWith('image/')) {
+            await handleImageQuery(message, userRequest, imageAttachment);
+            return;
+        }
     }
     if (!userRequest) return;
 
@@ -118,16 +121,6 @@ client.login(BOT_TOKEN);
 // --- AI TOOLS & FUNCTIONS --- //
 // ------------------------------------ //
 
-const commandExecutionTool = { /* Unchanged */ };
-async function playMusic(message, query) { /* Unchanged */ }
-async function skipTrack(message) { /* Unchanged */ }
-async function stopPlayback(message) { /* Unchanged */ }
-async function showQueue(message) { /* Unchanged */ }
-async function togglePauseResume(message) { /* Unchanged */ }
-async function handleImageQuery(message, textPrompt, imageAttachment) { /* Unchanged */ }
-async function executeGodModeCommand(message, commandText) { /* Unchanged */ }
-
-// --- UNCHANGED FUNCTIONS FOR COMPLETENESS ---
 const commandExecutionTool = {
     functionDeclarations: [
         { name: "executeDiscordCommand", description: "For any administrative/moderation action.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { commandDescription: { type: FunctionDeclarationSchemaType.STRING } }, required: ["commandDescription"] } },
@@ -138,6 +131,7 @@ const commandExecutionTool = {
         { name: "togglePauseResume", description: "Pauses the music if it is playing, or resumes it if it is paused.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
     ],
 };
+
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) return message.reply('You need to be in a voice channel to play music!');
@@ -152,18 +146,21 @@ async function playMusic(message, query) {
         await message.reply(`Something went wrong! I couldn't find or play the song.`);
     }
 }
+
 async function skipTrack(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to skip.");
     const skipped = queue.node.skip();
     await message.reply(skipped ? "⏭️ Skipped the current song." : "Something went wrong while skipping.");
 }
+
 async function stopPlayback(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue) return message.reply("There is nothing to stop.");
     queue.delete();
     await message.reply("⏹️ Stopped the music and cleared the queue.");
 }
+
 async function showQueue(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing right now.");
@@ -178,6 +175,7 @@ async function showQueue(message) {
         .addFields({ name: 'Now Playing', value: `▶️ **${currentTrack.title}** - \`${currentTrack.duration}\`` });
     await message.reply({ embeds: [embed] });
 }
+
 async function togglePauseResume(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to pause or resume.");
@@ -185,6 +183,7 @@ async function togglePauseResume(message) {
     queue.node.setPaused(!isPaused);
     await message.reply(isPaused ? "▶️ Resumed the music." : "⏸️ Paused the music.");
 }
+
 async function handleImageQuery(message, textPrompt, imageAttachment) {
     try {
         const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
@@ -199,6 +198,7 @@ async function handleImageQuery(message, textPrompt, imageAttachment) {
         await message.reply("Sorry, I had trouble analyzing that image.");
     }
 }
+
 async function executeGodModeCommand(message, commandText) {
     try {
         const codeGenModel = genAI.getGenerativeModel({
