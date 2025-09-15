@@ -9,8 +9,6 @@ import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/gener
 import 'dotenv/config';
 import axios from 'axios';
 import { Player } from 'discord-player';
-// ✅ CORRECTED: Import the official extractor package
-import { YouTubeExtractor } from '@discord-player/extractor';
 
 // Get IDs from environment variables
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
@@ -32,8 +30,11 @@ const client = new Client({
 // Initialize the music player
 const player = new Player(client);
 
-// ✅ CORRECTED: Register the official extractor
-await player.extractors.register(YouTubeExtractor, {});
+// ✅ --- THE DEFINITIVE FIX --- ✅
+// This command loads all the default extractors, including YouTube, Spotify, etc.
+// This is the most important line for fixing the music player.
+await player.extractors.loadDefault();
+
 
 // Configure Google Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -49,7 +50,7 @@ const model = genAI.getGenerativeModel({
 
 client.on('clientReady', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
-    console.log(`🎶 Final Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
+    console.log(`🎶 DEFINITIVE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
 player.events.on('playerStart', (queue, track) => {
@@ -57,6 +58,7 @@ player.events.on('playerStart', (queue, track) => {
 });
 player.events.on('error', (queue, error) => {
     console.error(`[Player Error]: ${error.message}`);
+    console.error(error);
     queue.metadata.channel.send('A player error occurred! Please check the logs.');
 });
 
@@ -69,7 +71,11 @@ client.on('messageCreate', async (message) => {
     const userRequest = message.content.replace(/<@!?d+>/g, '').trim();
 
     if (message.attachments.size > 0) {
-        // ... (Image handling logic)
+        const imageAttachment = message.attachments.first();
+        if (imageAttachment.contentType?.startsWith('image/')) {
+            await handleImageQuery(message, userRequest, imageAttachment);
+            return;
+        }
     }
     if (!userRequest) return;
 
@@ -117,33 +123,31 @@ client.login(BOT_TOKEN);
 // --- AI TOOLS & FUNCTIONS --- //
 // ------------------------------------ //
 
-const commandExecutionTool = { /* Unchanged */ };
-async function playMusic(message, query) { /* Unchanged */ }
-async function skipTrack(message) { /* Unchanged */ }
-async function stopPlayback(message) { /* Unchanged */ }
-async function showQueue(message) { /* Unchanged */ }
-async function togglePauseResume(message) { /* Unchanged */ }
-async function handleImageQuery(message, textPrompt, imageAttachment) { /* Unchanged */ }
-async function executeGodModeCommand(message, commandText) { /* Unchanged */ }
-
-// --- UNCHANGED FUNCTIONS FOR COMPLETENESS ---
 const commandExecutionTool = {
     functionDeclarations: [
         { name: "executeDiscordCommand", description: "For any administrative/moderation action.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { commandDescription: { type: FunctionDeclarationSchemaType.STRING } }, required: ["commandDescription"] } },
-        { name: "playMusic", description: "Plays a song in the user's voice channel from a URL or search query.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { query: { type: FunctionDeclarationSchemaType.STRING, description: "The YouTube URL or search query." } }, required: ["query"] } },
+        { name: "playMusic", description: "Plays a song in the user's voice channel from a URL or search query.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: { query: { type: FunctionDeclarationSchemaType.STRING, description: "The YouTube/Spotify URL or search query." } }, required: ["query"] } },
         { name: "skipTrack", description: "Skips the currently playing song.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
         { name: "stopPlayback", description: "Stops the music, clears the queue, and leaves the voice channel.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
         { name: "showQueue", description: "Shows the current song and the list of upcoming tracks.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
         { name: "togglePauseResume", description: "Pauses the music if it is playing, or resumes it if it is paused.", parameters: { type: FunctionDeclarationSchemaType.OBJECT, properties: {} } },
     ],
 };
+
 async function playMusic(message, query) {
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) return message.reply('You need to be in a voice channel to play music!');
+
     try {
         await player.play(voiceChannel, query, {
             requestedBy: message.author,
-            nodeOptions: { metadata: { channel: message.channel } }
+            nodeOptions: {
+                metadata: { channel: message.channel },
+                leaveOnEmpty: true,
+                leaveOnEmptyCooldown: 300000,
+                leaveOnEnd: true,
+                leaveOnStop: true,
+            }
         });
         await message.reply(`Searching for **${query}**...`);
     } catch (e) {
@@ -151,39 +155,51 @@ async function playMusic(message, query) {
         await message.reply(`Something went wrong! I couldn't find or play the song.`);
     }
 }
+
 async function skipTrack(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to skip.");
+    
     const skipped = queue.node.skip();
     await message.reply(skipped ? "⏭️ Skipped the current song." : "Something went wrong while skipping.");
 }
+
 async function stopPlayback(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue) return message.reply("There is nothing to stop.");
+
     queue.delete();
     await message.reply("⏹️ Stopped the music and cleared the queue.");
 }
+
 async function showQueue(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing right now.");
+
     const currentTrack = queue.currentTrack;
     const tracks = queue.tracks.toArray().slice(0, 10).map((track, i) => {
         return `${i + 1}. **${track.title}** - \`${track.duration}\``;
     }).join('\n');
+
     const embed = new EmbedBuilder()
         .setColor('#0099ff')
         .setTitle('Server Queue')
         .setDescription(tracks.length > 0 ? tracks : 'No more songs in the queue.')
         .addFields({ name: 'Now Playing', value: `▶️ **${currentTrack.title}** - \`${currentTrack.duration}\`` });
+
     await message.reply({ embeds: [embed] });
 }
+
 async function togglePauseResume(message) {
     const queue = player.nodes.get(message.guild.id);
     if (!queue || !queue.isPlaying()) return message.reply("There is no music playing to pause or resume.");
+
     const isPaused = queue.node.isPaused();
-    queue.node.setPaused(!isPaused);
+    queue.node.setPaused(!isPaused); // Toggle the paused state
+
     await message.reply(isPaused ? "▶️ Resumed the music." : "⏸️ Paused the music.");
 }
+
 async function handleImageQuery(message, textPrompt, imageAttachment) {
     try {
         const response = await axios.get(imageAttachment.url, { responseType: 'arraybuffer' });
@@ -198,6 +214,7 @@ async function handleImageQuery(message, textPrompt, imageAttachment) {
         await message.reply("Sorry, I had trouble analyzing that image.");
     }
 }
+
 async function executeGodModeCommand(message, commandText) {
     try {
         const codeGenModel = genAI.getGenerativeModel({
