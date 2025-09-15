@@ -8,8 +8,6 @@ import Discord, { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { GoogleGenerativeAI, FunctionDeclarationSchemaType } from '@google/generative-ai';
 import 'dotenv/config';
 import axios from 'axios';
-
-// STABLE BUILD: Import the professional music player engine
 import { Player } from 'discord-player';
 
 // Get IDs from environment variables
@@ -29,10 +27,9 @@ const client = new Client({
     partials: Object.keys(Partials).map((partial) => Partials[partial]),
 });
 
-// STABLE BUILD: Initialize the music player and attach it to the client
+// Initialize the music player and attach it to the client
 const player = new Player(client);
 // The library will now automatically load the YouTube extractor if the packages are installed.
-
 
 // Configure Google Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -51,7 +48,6 @@ client.on('clientReady', () => {
     console.log(`🎶 STABLE Music Engine & God Mode enabled. Listening for owner: ${OWNER_ID}`);
 });
 
-// STABLE BUILD: Add detailed logging for the music player to easily debug future issues.
 player.events.on('playerStart', (queue, track) => {
     queue.metadata.channel.send(`▶️ Now playing: **${track.title}**`);
 });
@@ -141,7 +137,6 @@ async function playMusic(message, query) {
     }
 
     try {
-        // The play method now handles search and playback seamlessly
         await player.play(voiceChannel, query, {
             requestedBy: message.author,
             nodeOptions: {
