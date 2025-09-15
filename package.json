@@ -1,7 +1,7 @@
 {
-  "name": "discord-ai-music-bot-final",
+  "name": "discord-ai-ultimate-bot",
   "version": "1.0.0",
-  "description": "The definitive, stable AI bot with a professional music engine.",
+  "description": "An AI bot with a fully functional, stable music engine.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -15,6 +15,8 @@
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "ffmpeg-static": "^5.2.0",
-    "opusscript": "^0.1.1"
+    "opusscript": "^0.1.1",
+    "play-dl": "^1.9.7",
+    "prism-media": "^1.3.5"
   }
 }
